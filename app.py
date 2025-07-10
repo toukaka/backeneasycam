@@ -1,4 +1,5 @@
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, session, redirect, url_for, render_template
+from flask import render_template_string
 from werkzeug.middleware.proxy_fix import ProxyFix
 import smtplib
 from email.message import EmailMessage
@@ -8,6 +9,7 @@ from datetime import datetime
 import sqlite3
 import os
 import user  # Your separate user module
+from flask_cors import CORS
 
 def add_or_update_entry(email, name, phone):
     # Define absolute path (change this to your preferred folder)
@@ -114,6 +116,13 @@ Powered by autosenseOS
 
 app = Flask(__name__)
 app.wsgi_app = ProxyFix(app.wsgi_app, x_prefix=1)
+app.secret_key = 'Toukaka-test-keys-2025.'  # Needed for sessions
+app.config['SESSION_COOKIE_SECURE'] = True
+app.config['SESSION_COOKIE_SAMESITE'] = 'None'  # If using cross-origin HTTPS fetch
+app.config['SESSION_COOKIE_HTTPONLY'] = True
+app.config['SESSION_REFRESH_EACH_REQUEST'] = True
+
+CORS(app, supports_credentials=True)
 print("_______________App backend__________________")
 
 
@@ -133,6 +142,19 @@ def contact():
         return jsonify({'status': 'error', 'message': f'Failed to send email: {info}'}), 500
 
 
+@app.route('/dashboard')
+def dashboard():
+    print("--------0000000-Dashbord request-0000000--------")
+    print("SESSION SET:", dict(session))
+    user_id = session.get('user_id')
+    if not user_id:
+        print("FAIL++++++++++ No user_id in session; redirecting to login")
+        return redirect('/discover')
+    print(f"+++++++++++++user_id in session: {user_id}")
+
+    return render_template('dashboard.html', name=session.get('user_name'))
+
+
 @app.route('/login', methods=['POST'])
 def login():
     print("--------0000000-Login request-0000000--------")
@@ -145,7 +167,15 @@ def login():
     success, info = user.login_user(email, password)
     print("Result ... ", success, info)
     if success:
-        return jsonify({'status': 'success', 'message': 'Login successful', 'user': info}),201
+        session['user_id'] = info['id']
+        session['user_name'] = info['name']
+        session['email'] = info['email']
+        print("SESSION SET:", dict(session))
+        return jsonify({
+            'status': 'success',
+            'message': 'Login successful!',
+            'redirect': '/api/dashboard'
+        }), 200
     else:
         return jsonify({'status': 'error', 'message': info}), 401
 
